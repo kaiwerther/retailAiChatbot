@@ -1,19 +1,36 @@
 # main.py
+
 import os
-from dotenv import load_dotenv
-load_dotenv()
-
+import logging
 from fastapi import FastAPI
-from api import conversations, messages, chat
 
+def create_app() -> FastAPI:
+    # Determine debug mode from environment variable
+    debug_mode = os.environ.get("DEBUG", "False").lower() in ["true", "1"]
+    
+    # Create the FastAPI app instance with some metadata
+    app = FastAPI(
+        title="Chat API",
+        debug=debug_mode,
+        description="An example chat api for personal learning purpose."
+    )
+    
+    # Include routers from your API modules
+    from api import chat
+    app.include_router(chat.router, prefix="/api", tags=["chat"])
+    
+    return app
 
-
-app = FastAPI()
-
-app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
-app.include_router(messages.router, prefix="/messages", tags=["messages"])
-app.include_router(chat.router, prefix="/api", tags=["chat"])
+# Create the app instance using our factory function
+app = create_app()
 
 if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    
+    # Retrieve configuration from environment variables
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", 8000))
+    
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=host, port=port)

@@ -4,45 +4,90 @@ from typing import Optional
 from pydantic import BaseModel
 from core.database import get_checkpointer
 from core.chatbot import create_chatbot_workflow
-from models.conversation import Conversation, Message
+from typing import List
+from models.thread import Thread, Message
 from langchain_core.messages.ai import AIMessage
-from core.app_state import workflow_app  # Import the global workflow_app
+from core.app_state import workflow_app, checkpointer  # Import the global workflow_app
 
 router = APIRouter()
 
-# In-memory store for conversations
-# Structure: { user_id: { conversation_id: Conversation, ... } }
-conversations_db = {}
-
 class ChatRequest(BaseModel):
-    user_id: str
-    conversation_id: Optional[str] = None  # If not provided, a new conversation is created.
     message: str
     language: str
 
-class ChatResponse(BaseModel):
-    conversation_id: str
-    user_message: str
-    ai_response: str
-    messages: list[Message]
+# TODO: With auth we can remove the /users/{user_id} from the path.
+# because we can get the user_id from the token.
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest):
+@router.get("/users/{user_id}/threads", response_model=List[Thread])
+async def get_user_threads(user_id: str):
+    """
+    TODO: Get all threads for a given user.
+    """
+    return []
 
-    # Configuration: using conversation_id as thread_id, and passing user_id.
-    config = {"configurable": {"thread_id": "randomt", "user_id": "user_id"}}
+@router.put("/users/{user_id}/threads", response_model=Thread)
+async def put_user_thread(user_id: str, request: ChatRequest):
+    """
+    TODO: Create new threads.
+    """
+    return []
+
+@router.delete("/users/{user_id}/threads/{thread_id}", response_model=Thread)
+async def delete_user_thread(user_id: str, thread_id: str, request: ChatRequest):
+    """
+    TODO: delete a threads.
+    """
+
+    return []
+
+
+@router.get("/users/{user_id}/threads/{thread_id}", response_model=Thread)
+async def get_user_thread(user_id: str, thread_id: str):
+    """
+    TODO: get a complete thread.
+    """
+    
+    # TODO: This is not user specific but thread specific,
+    # check if this is easily solvable
+    # we might end up adding the user_id to the thread_id
+    config = {"configurable": {"user_id": user_id, "thread_id": thread_id }}
+    cp_data = checkpointer.get(config)
+    
+    # Extract the messages from the checkpoint data
+    messages = cp_data.get("channel_values", {}).get("messages", [])
+    
+    # Convert each message to our Message model
+    converted_messages = []
+    for msg in messages:
+        # Determine the role based on the class name
+        if msg.__class__.__name__ == "HumanMessage":
+            role = "human"
+        elif msg.__class__.__name__ == "AIMessage":
+            role = "ai"
+        else:
+            role = "unknown"
+        
+        converted_messages.append(Message(role=role, content=msg.content))
+    
+    return Thread(thread_id=thread_id, user_id=user_id, messages=converted_messages)
+
+@router.put("/users/{user_id}/threads/{thread_id}/messages", response_model=str)
+async def put_new_message(user_id: str, thread_id: str, request: ChatRequest):
+    """
+    TODO: Chat endpoint here.
+    """
+    # Config to identify the current conversation
+    config = {"configurable": {"user_id": user_id, "thread_id": thread_id }}
 
     ai_response = ""
+
+    # TODO: Stream data to frontend instead of collecting it all at once.
     for chunk, metadata in workflow_app.stream(
         {"messages": request.message, "language": request.language},
         config,
         stream_mode="messages",
     ):
-        # Here we assume chunk is a dict that contains the key "content".
         if isinstance(chunk, AIMessage):  # Filter to just model responses
-            print(chunk.content, end="")
             ai_response = ai_response + chunk.content
-
-    # Append the AI response to the conversation.
 
     return ai_response

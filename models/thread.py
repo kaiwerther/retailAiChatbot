@@ -2,11 +2,12 @@
 from typing import List
 from pydantic import BaseModel
 
+# message used for llm communication
 class Message(BaseModel):
-    sender: str  # e.g., "user" or "ai"
+    role: str
     content: str
 
-class Conversation(BaseModel):
-    conversation_id: str
+class Thread(BaseModel):
+    thread_id: str
     user_id: str
     messages: List[Message]
