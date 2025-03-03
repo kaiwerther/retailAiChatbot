@@ -1,9 +1,6 @@
 # api/chat.py
-from fastapi import APIRouter, HTTPException
-from typing import Optional
+from fastapi import APIRouter
 from pydantic import BaseModel
-from core.database import get_checkpointer
-from core.chatbot import create_chatbot_workflow
 from typing import List
 from models.thread import Thread, Message
 from langchain_core.messages.ai import AIMessage
@@ -50,7 +47,7 @@ async def get_user_thread(user_id: str, thread_id: str):
     # TODO: This is not user specific but thread specific,
     # check if this is easily solvable
     # we might end up adding the user_id to the thread_id
-    config = {"configurable": {"user_id": user_id, "thread_id": thread_id }}
+    config = {"configurable": {"user_id": user_id, "thread_id": user_id + " " + thread_id }}
     cp_data = checkpointer.get(config)
     
     # Extract the messages from the checkpoint data
@@ -61,9 +58,9 @@ async def get_user_thread(user_id: str, thread_id: str):
     for msg in messages:
         # Determine the role based on the class name
         if msg.__class__.__name__ == "HumanMessage":
-            role = "human"
+            role = "user"
         elif msg.__class__.__name__ == "AIMessage":
-            role = "ai"
+            role = "assistant"
         else:
             role = "unknown"
         
@@ -77,7 +74,7 @@ async def put_new_message(user_id: str, thread_id: str, request: ChatRequest):
     TODO: Chat endpoint here.
     """
     # Config to identify the current conversation
-    config = {"configurable": {"user_id": user_id, "thread_id": thread_id }}
+    config = {"configurable": {"user_id": user_id, "thread_id": user_id + " " + thread_id }}
 
     ai_response = ""
 
@@ -87,7 +84,6 @@ async def put_new_message(user_id: str, thread_id: str, request: ChatRequest):
         config,
         stream_mode="messages",
     ):
-        if isinstance(chunk, AIMessage):  # Filter to just model responses
-            ai_response = ai_response + chunk.content
+        ai_response = ai_response + chunk.content
 
     return ai_response

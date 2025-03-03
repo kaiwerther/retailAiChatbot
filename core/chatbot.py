@@ -14,6 +14,9 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.managed import IsLastStep, RemainingSteps
 
+from langmem import create_manage_memory_tool, create_search_memory_tool
+from langgraph.store.memory import InMemoryStore
+
 # Define our tools
 @tool
 def get_weather(city: Literal["münchen", "augsburg"]):
@@ -32,16 +35,10 @@ async def amultiply(a: int, b: int) -> int:
     print("call multiply")
     return a * b
 
-tools = [get_weather, amultiply]
-tool_node = ToolNode(tools)
-
-# Initialize model
-
-model = ChatOpenAI(model="gpt-4-turbo-preview").bind_tools(tools)
 
 # Define our state schema for the workflow
 class State(TypedDict):
-    messages: Annotated[Sequence[dict], add_messages]  # Expecting list of dicts {"role":..., "content":...}
+    messages: Annotated[Sequence[dict], add_messages]
     language: str
     is_last_step: IsLastStep
     remaining_steps: RemainingSteps
@@ -56,6 +53,23 @@ prompt_template = ChatPromptTemplate.from_messages(
 
 def create_chatbot_workflow(checkpointer: PostgresSaver):
     """Set up and compile the chatbot workflow using the given checkpointer."""
+    tools = [get_weather, amultiply,
+             create_manage_memory_tool(namespace=("memories", "{user_id}",)),
+             create_search_memory_tool(namespace=("memories", "{user_id}",))]
+    tool_node = ToolNode(tools)
+
+    # Initialize model
+
+    model = ChatOpenAI(model="gpt-4-turbo-preview").bind_tools(tools)
+
+    # for now we use in memory store, switch to a real store later
+    store = InMemoryStore(
+        index={
+            "dims": 1536,
+            "embed": "openai:text-embedding-3-small"
+        }
+    )
+   
     def should_continue(state: MessagesState):
         messages = state["messages"]
         last_message = messages[-1]
@@ -76,4 +90,4 @@ def create_chatbot_workflow(checkpointer: PostgresSaver):
     workflow.add_edge(START, "agent")
     workflow.add_conditional_edges("agent", should_continue, ["tools", END])
     workflow.add_edge("tools", "agent")
-    return workflow.compile(checkpointer=checkpointer)
+    return workflow.compile(checkpointer=checkpointer, store=store)
